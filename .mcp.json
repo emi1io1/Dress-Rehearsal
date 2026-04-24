@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "insforge": {
+      "type": "http",
+      "url": "https://mcp.insforge.dev/mcp"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+version: 1
+subgraphs:
+  - name: salary
+    routing_url: http://host.docker.internal:4101/graphql
+    schema:
+      file: ./schemas/salary.graphql
+  - name: company
+    routing_url: http://host.docker.internal:4102/graphql
+    schema:
+      file: ./schemas/company.graphql
+  - name: industry
+    routing_url: http://host.docker.internal:4103/graphql
+    schema:
+      file: ./schemas/industry.graphql
+  - name: profile
+    routing_url: http://host.docker.internal:4104/graphql
+    schema:
+      file: ./schemas/profile.graphql

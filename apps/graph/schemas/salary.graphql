@@ -1,0 +1,21 @@
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.7", import: ["@key", "@shareable"])
+
+type Query {
+  salaryBenchmark(jobTitle: String!, company: String, yearsExperience: Int): SalaryBenchmark
+}
+
+type SalaryBenchmark
+  @shareable
+{
+  jobTitle: String!
+  company: String
+  p25: Int!
+  p50: Int!
+  p75: Int!
+  p90: Int!
+  equitySignalUSD: Int
+  currency: String!
+  source: String!
+  lastUpdated: String!
+}

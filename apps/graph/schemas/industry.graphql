@@ -1,0 +1,16 @@
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.7", import: ["@key", "@shareable"])
+
+type Query {
+  industrySignals(query: String!, limit: Int = 5): [IndustrySignal!]!
+}
+
+type IndustrySignal
+  @shareable
+{
+  title: String!
+  snippet: String!
+  url: String!
+  siteName: String
+  position: Int!
+}

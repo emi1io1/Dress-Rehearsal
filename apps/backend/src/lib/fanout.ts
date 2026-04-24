@@ -1,32 +1,46 @@
-import { ARCHETYPES, BATCH_PLAN } from "./personas";
+import { getRegistryEntry } from "@rehearsal/agents";
+import { BATCH_PLAN } from "./personas";
 import {
   emit,
   rankRun,
   registerBatchRuns,
   updateConfidence,
 } from "./redis";
-import { runAnalysisOnly, runCriticalMomentOnly } from "./simulate";
-import { createSimulationRun, updateSimulationRun } from "./store";
+import { runSimulation } from "./simulate";
+import {
+  createAgentRun,
+  createSimulationRun,
+  finishAgentRun,
+  updateSimulationRun,
+} from "./store";
 import type { Outcome, Scenario, SimulationRun } from "@rehearsal/types";
 
 /**
- * Phase 2 fanout: create 10 parallel simulation runs, write initial
- * rows to Insforge, emit progress events to Redis, update the
- * leaderboard + confidence hash as each completes.
+ * Phase 2 fanout + Phase 6 audit log.
  *
- * The 10 workers run concurrently via Promise.all — the UI subscribes
- * to the Redis streams via SSE to watch progress in real time.
+ * Every simulation goes through a Guild-registered archetype agent. Before
+ * invoking the agent, we write an `agent_runs` audit-log row with the
+ * input digest. After completion, we finalize the row with the output
+ * digest. This gives us a queryable record of every persona invocation
+ * attributed to a specific Guild agent ID + code version.
  */
 export async function kickoffBatch(scenario: Scenario): Promise<string[]> {
-  // Create one Insforge row per planned sim, in pending state.
   const pendingRuns: SimulationRun[] = [];
   for (const plan of BATCH_PLAN) {
-    const archetype = ARCHETYPES[plan.archetypeId];
+    const entry = getRegistryEntry(plan.archetypeId);
+    if (!entry) {
+      throw new Error(
+        `BATCH_PLAN references unknown archetype ${plan.archetypeId} — register it in apps/agents.`,
+      );
+    }
     const run = await createSimulationRun({
       scenarioId: scenario.id,
       runType: plan.runType,
-      personaArchetype: archetype.id,
-      archetypeName: archetype.name,
+      personaArchetype: entry.archetypeId,
+      archetypeName: entry.displayName,
+      archetypeCodeVersion: entry.codeVersion,
+      guildAgentId: entry.guildAgentId,
+      guildAgentVersion: entry.guildVersion,
       curveballs: [],
       gapAnalysis: { unaddressed: [], weak: [], strong: [] },
       criticalMoment: null,
@@ -39,8 +53,6 @@ export async function kickoffBatch(scenario: Scenario): Promise<string[]> {
   const runIds = pendingRuns.map((r) => r.id);
   await registerBatchRuns(scenario.id, runIds);
 
-  // Kick off every worker but don't await — the HTTP response returns
-  // immediately so the client can start reading the stream.
   const state = {
     userId: scenario.userId,
     completedSims: 0,
@@ -48,7 +60,6 @@ export async function kickoffBatch(scenario: Scenario): Promise<string[]> {
     fitCounts: { strong: 0, mixed: 0, weak: 0 } as Record<Outcome["roleFit"], number>,
   };
 
-  // Intentionally NOT awaited. void the promise so Node doesn't warn.
   void Promise.all(
     pendingRuns.map((run, i) => runWorker(scenario, run, BATCH_PLAN[i].archetypeId, state)),
   );
@@ -67,22 +78,44 @@ async function runWorker(
     fitCounts: Record<Outcome["roleFit"], number>;
   },
 ): Promise<void> {
-  const archetype = ARCHETYPES[archetypeId];
+  const entry = getRegistryEntry(archetypeId);
+  if (!entry) throw new Error(`Missing registry entry for ${archetypeId}`);
   const runId = run.id;
   const now = () => Date.now();
+
+  // Audit-log: start agent run before we invoke the archetype.
+  const agentRun = await createAgentRun({
+    simulationRunId: runId,
+    archetypeId: entry.archetypeId,
+    guildAgentId: entry.guildAgentId,
+    guildAgentVersion: entry.guildVersion,
+    archetypeCodeVersion: entry.codeVersion,
+    archetypeDisplayName: entry.displayName,
+    scopedSubgraphs: [...entry.scopedSubgraphs],
+    inputDigest: {
+      scenarioId: scenario.id,
+      company: scenario.context.company,
+      jobTitle: scenario.context.jobTitle,
+      runType: run.runType,
+      goalCount: scenario.userGoals.length,
+      groundingPresent: Boolean(scenario.grounding),
+      federatedPresent: Boolean(scenario.federatedContext),
+    },
+    startedAt: new Date().toISOString(),
+  });
 
   try {
     await emit(runId, {
       type: "started",
       runId,
       runType: run.runType,
-      archetypeId: archetype.id,
-      archetypeName: archetype.name,
+      archetypeId: entry.archetypeId,
+      archetypeName: entry.displayName,
       at: now(),
     });
 
-    // Stage 1: analysis pass
-    const analysis = await runAnalysisOnly({
+    // Full agent invocation — stage 1 + 2 inside one Guild-agent call.
+    const result = await runSimulation({
       scenario,
       runType: run.runType,
       archetypeId,
@@ -91,46 +124,35 @@ async function runWorker(
     await emit(runId, {
       type: "analysis_complete",
       runId,
-      curveballs: analysis.curveballs,
-      gapAnalysis: analysis.gapAnalysis,
-      outcome: analysis.outcome,
+      curveballs: result.curveballs,
+      gapAnalysis: result.gapAnalysis,
+      outcome: result.outcome,
       at: now(),
     });
 
-    // Partial persist so /api/scenarios/[id] reflects progress even if the
-    // page is reloaded mid-batch.
     await updateSimulationRun(runId, {
-      curveballs: analysis.curveballs,
-      gapAnalysis: analysis.gapAnalysis,
-      outcome: analysis.outcome,
+      curveballs: result.curveballs,
+      gapAnalysis: result.gapAnalysis,
+      outcome: result.outcome,
     });
 
-    // Rank + confidence update now that stage 1 has an outcome.
-    await rankRun(scenario.id, runId, analysis.outcome);
-    state.fitCounts[analysis.outcome.roleFit] += 1;
+    await rankRun(scenario.id, runId, result.outcome);
+    state.fitCounts[result.outcome.roleFit] += 1;
     await updateConfidence(state.userId, {
       completedSims: state.completedSims,
       totalSims: state.totalSims,
       fitCounts: state.fitCounts,
     });
 
-    // Stage 2: critical moment
-    const criticalMoment = await runCriticalMomentOnly({
-      scenario,
-      runType: run.runType,
-      archetype: analysis.archetype,
-      curveballs: analysis.curveballs,
-    });
-
     await emit(runId, {
       type: "critical_moment_complete",
       runId,
-      criticalMoment,
+      criticalMoment: result.criticalMoment,
       at: now(),
     });
 
     await updateSimulationRun(runId, {
-      criticalMoment,
+      criticalMoment: result.criticalMoment,
       status: "complete",
     });
 
@@ -142,9 +164,20 @@ async function runWorker(
     });
 
     await emit(runId, { type: "done", runId, at: now() });
+
+    await finishAgentRun(agentRun.id, {
+      outputDigest: {
+        curveballCount: result.curveballs.length,
+        highRiskCount: result.curveballs.filter((c) => c.risk === "HIGH").length,
+        handled: result.criticalMoment ? result.criticalMoment.handled : null,
+        roleFit: result.outcome.roleFit,
+      },
+      error: null,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     await updateSimulationRun(runId, { status: "error", error: message });
     await emit(runId, { type: "error", runId, message, at: now() });
+    await finishAgentRun(agentRun.id, { error: message });
   }
 }

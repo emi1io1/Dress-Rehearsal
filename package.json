@@ -10,7 +10,11 @@
     "dev": "npm run dev --workspaces --if-present",
     "dev:backend": "npm run dev -w @rehearsal/backend",
     "dev:frontend": "npm run dev -w @rehearsal/frontend",
+    "dev:graph": "npm run dev -w @rehearsal/graph",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "overrides": {
+    "graphql": "16.9.0"
   }
 }

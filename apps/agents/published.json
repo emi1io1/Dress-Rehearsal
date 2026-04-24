@@ -1,0 +1,32 @@
+{
+  "friendly_evaluator": {
+    "guildAgentId": null,
+    "version": null,
+    "publishedAt": null,
+    "hubUrl": null
+  },
+  "fast_track_assessor": {
+    "guildAgentId": null,
+    "version": null,
+    "publishedAt": null,
+    "hubUrl": null
+  },
+  "culture_probe": {
+    "guildAgentId": null,
+    "version": null,
+    "publishedAt": null,
+    "hubUrl": null
+  },
+  "technical_skeptic": {
+    "guildAgentId": null,
+    "version": null,
+    "publishedAt": null,
+    "hubUrl": null
+  },
+  "hard_negotiator": {
+    "guildAgentId": null,
+    "version": null,
+    "publishedAt": null,
+    "hubUrl": null
+  }
+}

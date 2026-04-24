@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.0",
     "@insforge/sdk": "^1.2.5",
+    "@rehearsal/agents": "*",
     "@rehearsal/types": "*",
     "@upstash/redis": "^1.37.0",
     "next": "16.2.4",

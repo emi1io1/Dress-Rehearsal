@@ -1,0 +1,27 @@
+{
+  "name": "@rehearsal/graph",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "export-schemas": "tsx src/export-schemas.ts",
+    "compose": "npm run export-schemas && wgc router compose -i compose.yaml -o router.json",
+    "router:up": "docker compose -f docker-compose.router.yaml up",
+    "router:down": "docker compose -f docker-compose.router.yaml down",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@apollo/subgraph": "^2.13.3",
+    "@rehearsal/types": "*",
+    "graphql": "^16.9.0",
+    "graphql-tag": "^2.12.6",
+    "graphql-yoga": "^5.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4.21.0",
+    "typescript": "^5",
+    "wgc": "^0.115.0"
+  }
+}

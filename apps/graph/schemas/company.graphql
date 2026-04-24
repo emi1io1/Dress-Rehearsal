@@ -1,0 +1,30 @@
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.7", import: ["@key", "@shareable"])
+
+type Query {
+  company(name: String!): Company
+}
+
+type Company
+  @shareable
+{
+  name: String!
+  aliases: [String!]!
+  industry: String!
+  stage: Stage!
+  employeeRange: String!
+  headquarters: String!
+  recentFundingUSD: Float
+  publicCompany: Boolean!
+  notableProducts: [String!]!
+}
+
+enum Stage {
+  SEED
+  SERIES_A
+  SERIES_B
+  SERIES_C
+  GROWTH
+  LATE_STAGE
+  PUBLIC
+}

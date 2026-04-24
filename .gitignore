@@ -25,3 +25,6 @@ yarn-debug.log*
 
 # Local data store (Phase 1 fallback, unused now that Insforge is live)
 **/.data
+
+# Guild publish scaffolding (generated per-archetype)
+apps/agents/build/
